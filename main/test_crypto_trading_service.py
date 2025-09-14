@@ -3,7 +3,9 @@ from typing import Dict
 import ccxt
 import time
 import pytz
+import gc
 import pandas as pd
+
 from datetime import date, timedelta, datetime, tzinfo
 from loguru import logger
 from ccxt.base.exchange import Exchange
@@ -17,8 +19,8 @@ class CryptoTradingService:
     symbol: str = 'BTC-PERPETUAL'
     long_r_thres: float
     short_r_thres: float
-    # long_r_thres, short_r_thres = -0.04, 0.02
-    long_r_thres, short_r_thres = -0.04, 0
+    long_r_thres, short_r_thres = -0.04, 0.02 # Chin Shum Recommanded
+    # long_r_thres, short_r_thres = -0.04, 0.09  # based on the backtest result
     # init
     deribit: Exchange = ccxt.deribit({
         'apiKey': API_KEY,
@@ -49,6 +51,7 @@ class CryptoTradingService:
                     cls.create_market_order(signal, bet_size)
                     time.sleep(1)
                     logger.info('End executing strat, UTC time={}', str(datetime.now(tz=pytz.UTC)))
+                    gc.collect()
             except:
                 pass
 
@@ -60,7 +63,6 @@ class CryptoTradingService:
         bnb_data_df: pd.DataFrame = CryptoPriceDataService.fetch_ohlcv_times_series_df(
             'BNB/USDT', 'binance', '1d', t_minus_5_ts)
         bnb_r_series: pd.Series = bnb_data_df['BNB/USDT_binance_close'].pct_change()
-
         # check last data point is on today
         last_date: date = bnb_r_series.index[-1].date()
         utc_current_dt: datetime = datetime.now(tz=pytz.UTC)
@@ -89,8 +91,6 @@ class CryptoTradingService:
         else:
             signal = 0
         logger.debug('Model Signal = {}', str(signal))
-
-        print('signal: ', signal)
         return signal
 
 
@@ -99,10 +99,9 @@ class CryptoTradingService:
         # chk original acct position
         position_info_dict: Dict = cls.deribit.fetch_positions([cls.symbol])[0]['info']
         side: str = position_info_dict.get('direction')
-        position_size: float = float(position_info_dict.get('size'))
+        position_size: float = abs(float(position_info_dict.get('size')))
         time.sleep(0.05)  # rate limit for deribit is 20 ms
-
-        # # execute mkt order
+        # execute mkt order
         if signal == 1:
             if side == 'sell' and position_size == bet_size:
                 flat_order: Dict = cls.deribit.create_order(cls.symbol, 'market', 'sell',
@@ -131,7 +130,6 @@ class CryptoTradingService:
                 flat_order = cls.deribit.create_order(cls.symbol, 'market', 'buy',
                                                     bet_size, None)
         time.sleep(0.05)
-
         # chk acct after trading
         position_info_dict = cls.deribit.fetch_positions([cls.symbol])[0]['info']
         side = position_info_dict.get('direction')
@@ -146,6 +144,6 @@ class CryptoTradingService:
 #from facade.test_crypto_trading_service import CryptoTradingService
 
 if __name__ == '__main__':
-    CryptoTradingService.execute_strategy(15, 59, 0)
-    # CryptoTradingService.create_market_order(0, 10)
+    CryptoTradingService.execute_strategy(10, 59, 0)
     # CryptoTradingService.create_signal()
+    # CryptoTradingService.create_market_order(-1, 10)
