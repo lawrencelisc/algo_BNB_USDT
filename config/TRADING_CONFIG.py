@@ -1,2 +1,2 @@
-API_KEY: str = 'QYo_htBd'
-SECRET_KEY: str = '5LAd404e-n5QKQ57lGcZ8vLBhSUPiNwcotjvM0onuzk'
+API_KEY: str = 'D3QhDAJfUgEh4Rs24X'
+SECRET_KEY: str = 'G26JWqTnjUoZAGKhyD3ObEqqqSUm8HtaDEpe'
