@@ -49,7 +49,7 @@ class CryptoTradingService:
                     logger.info('Start executing strat, UTC time={}', str(datetime.now(tz=pytz.UTC)))
                     signal: int = cls.create_signal()
                     cls.create_market_order(signal, bet_size)
-                    time.sleep(1)
+                    await asyncio.sleep(1)
                     logger.info('End executing strat, UTC time={}', str(datetime.now(tz=pytz.UTC)))
                     gc.collect()
             except:

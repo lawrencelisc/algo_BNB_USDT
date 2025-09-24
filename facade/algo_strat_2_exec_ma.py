@@ -2,31 +2,35 @@ from typing import Dict
 
 import ccxt
 import sys
+import asyncio
 import time
 import pytz
-import gc
 import pandas as pd
+import gc
 
 from datetime import date, timedelta, datetime, tzinfo
 from loguru import logger
 from ccxt.base.exchange import Exchange
 
 from facade.test_crypto_price_data_service import CryptoPriceDataService
-from config.TRADING_CONFIG import API_KEY, SECRET_KEY
+from config.TRADING_CONFIG import API_KEY, SECRET_KEY, COIN_2_SYMBOL, COIN_2_ROL_DAY, COIN_2_LONG_THRES
 
 
-class CryptoTradingService:
+class Strat_2_TradingService:
     # const
-    symbol: str = 'SOLUSDT'
+    symbol: str = COIN_2_SYMBOL + 'USDT'
+    symbol_ds: str = COIN_2_SYMBOL + '/USDT'
+    rol_day: float = COIN_2_ROL_DAY
+    long_thres: float = COIN_2_LONG_THRES
+
     leverage: str = '2'  # Set leverage to 2x
-    bet_size: float = 1 # Set unit of crypto to trade
-    long_thres: float
-    rol_day: float
-    long_thres, rol_day = 0.05, 30
     # init
     bybit: Exchange = ccxt.bybit({
         'apiKey': API_KEY,
-        'secret': SECRET_KEY
+        'secret': SECRET_KEY,
+        'options': {
+            'adjustForTimeDifference': True  # exchange-specific option
+        }
     })
     markets: Dict = bybit.load_markets()
     market: Dict = bybit.market(symbol)
@@ -35,14 +39,12 @@ class CryptoTradingService:
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', None)
 
-
     def __init__(self):
         return
 
     @classmethod
-    def execute_strategy(cls, exec_hr_int: int = 0, exec_min_int: int = 1,
-                         exec_sec_int: int = 0, bet_size: float = 1) -> None:
-
+    async def execute_strategy(cls, exec_hr_int: int = 0, exec_min_int: int = 1,
+                               exec_sec_int: int = 0, bet_size: float = 1) -> None:
         while True:
             try:
                 utc_current_dt: datetime = datetime.now(tz=pytz.UTC)
@@ -51,10 +53,11 @@ class CryptoTradingService:
                 utc_current_sec: int = utc_current_dt.second
                 if utc_current_hr == exec_hr_int and utc_current_min == exec_min_int \
                         and utc_current_sec == exec_sec_int:
-                    logger.info('Start executing strat, UTC time={}', str(datetime.now(tz=pytz.UTC)))
+                    logger.info('Start executing strat, coin symbol={}, UTC time={}',
+                                str(cls.symbol), str(datetime.now(tz=pytz.UTC)))
                     signal: int = cls.create_signal(cls.long_thres, cls.rol_day)
-                    cls.create_market_order(signal, bet_size)  # run order execution
-                    time.sleep(1)
+                    cls.create_market_order(signal, bet_size)
+                    await asyncio.sleep(1)
                     logger.info('End executing strat, UTC time={}', str(datetime.now(tz=pytz.UTC)))
                     gc.collect()
             except KeyboardInterrupt:
@@ -66,11 +69,11 @@ class CryptoTradingService:
     def create_signal(cls, long_thres: float = 0.05, rol_day: float = 30) -> int:
         day100_millisec: int = 3600 * 24 * 100 * 1000
         t_minus_100_ts: str = cls.bybit.iso8601(cls.bybit.milliseconds() - day100_millisec)
-        sol_data_df: pd.DataFrame = CryptoPriceDataService.fetch_ohlcv_times_series_df(
-            'SOL/USDC', 'binance', '1d', t_minus_100_ts)
-        df: pd.DataFrame = sol_data_df[['SOL/USDC_binance_close']].copy()
-        df['ma'] = df['SOL/USDC_binance_close'].rolling(rol_day).mean()
-        df['ma_diff'] = df['SOL/USDC_binance_close'] / df['ma'] - 1
+        data_df: pd.DataFrame = CryptoPriceDataService.fetch_ohlcv_times_series_df(
+            cls.symbol_ds, 'binance', '1d', t_minus_100_ts)
+        df: pd.DataFrame = data_df[[cls.symbol_ds + '_binance_close']].copy()
+        df['ma'] = df[cls.symbol_ds + '_binance_close'].rolling(rol_day).mean()
+        df['ma_diff'] = df[cls.symbol_ds + '_binance_close'] / df['ma'] - 1
         # check last data point is on today
         last_date: date = df.index[-1].date()
         utc_current_dt: datetime = datetime.now(tz=pytz.UTC)
@@ -96,11 +99,11 @@ class CryptoTradingService:
             signal = 1
         else:
             signal = 0
+        logger.debug('Coin (symbol) = {}', str(cls.symbol))
         logger.debug('Model (signal) = {}', str(signal))
         logger.debug('Latest ma diff = {}', str(coin_t_minus_one))
-        logger.debug('Threshold (long_thres) = {}', str(long_thres))
+        logger.debug('Threshold (long_thres) = {}', str(cls.long_thres))
         return signal
-
 
     @classmethod
     def create_market_order(cls, signal: int = 0, bet_size: float = 10) -> None:
@@ -110,7 +113,7 @@ class CryptoTradingService:
         position_size: float = abs(float(position_info_dict.get('size')))
         params = {
             'leverage': cls.leverage
-                  }
+        }
         usdt_acct_bal: float = cls.bybit.fetch_balance().get('USDT').get('total')
         logger.info('USDT Account balance = {}', str(usdt_acct_bal))
         time.sleep(0.05)  # rate limit for bybit is 20 ms
@@ -142,10 +145,3 @@ class CryptoTradingService:
         usdt_acct_bal: float = cls.bybit.fetch_balance().get('USDT').get('total')
         logger.info('USDT Account balance = {}', str(usdt_acct_bal))
         return
-
-#from facade.test_crypto_trading_service import CryptoTradingService
-
-if __name__ == '__main__':
-    CryptoTradingService.execute_strategy(23, 59, 0)
-    # CryptoTradingService.create_signal(0.05, 30)
-    # CryptoTradingService.create_market_order(0, CryptoTradingService.bet_size)
