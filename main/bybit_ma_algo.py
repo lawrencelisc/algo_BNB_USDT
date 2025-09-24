@@ -39,7 +39,6 @@ class CryptoTradingService:
     def __init__(self):
         return
 
-
     @classmethod
     def execute_strategy(cls, exec_hr_int: int = 0, exec_min_int: int = 1,
                          exec_sec_int: int = 0, bet_size: float = 10) -> None:
@@ -53,14 +52,13 @@ class CryptoTradingService:
                 if utc_current_hr == exec_hr_int and utc_current_min == exec_min_int \
                         and utc_current_sec == exec_sec_int:
                     logger.info('Start executing strat, UTC time={}', str(datetime.now(tz=pytz.UTC)))
-                    signal: int = cls.create_signal(long_thres, rol_day)
-                    sys.exit()
-                    cls.create_market_order(signal, bet_size)
+                    signal: int = cls.create_signal(cls.long_thres, cls.rol_day)
+                    cls.create_market_order(signal, bet_size)  # run order execution
                     time.sleep(1)
                     logger.info('End executing strat, UTC time={}', str(datetime.now(tz=pytz.UTC)))
                     gc.collect()
             except KeyboardInterrupt:
-                print("Program stopped by user.")
+                print('Program stopped by user.')
                 sys.exit(0)
 
 
@@ -89,7 +87,7 @@ class CryptoTradingService:
             signal = 0
             return signal
         # create signal from return
-        coin_t_minus_one: float = df.loc[df.index[-1], "ma_diff"]
+        coin_t_minus_one: float = df.loc[df.index[-1], 'ma_diff']
         if pd.isna(coin_t_minus_one):
             logger.error('value is NaN!')
             signal = 0
@@ -98,7 +96,9 @@ class CryptoTradingService:
             signal = 1
         else:
             signal = 0
-        logger.debug('Model Signal = {}', str(signal))
+        logger.debug('Model (signal) = {}', str(signal))
+        logger.debug('Latest ma diff = {}', str(coin_t_minus_one))
+        logger.debug('Threshold (long_thres) = {}', str(long_thres))
         return signal
 
 
